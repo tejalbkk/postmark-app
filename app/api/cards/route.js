@@ -71,10 +71,21 @@ export async function POST(request) {
     return bad('Your photo could not be saved. Try again in a moment.', 502);
   }
 
+  // Optional small JPEG for chat link previews; posting still works without it.
+  const preview = form.get('preview');
+  if (preview && typeof preview !== 'string' && preview.type === 'image/jpeg' && preview.size <= 600 * 1024) {
+    const pv = await sb.storage.from(BUCKET).upload(`${id}-og.jpg`, Buffer.from(await preview.arrayBuffer()), {
+      contentType: 'image/jpeg',
+      cacheControl: '31536000',
+      upsert: false,
+    });
+    if (pv.error) console.error('preview upload failed', pv.error);
+  }
+
   const ins = await sb.from('cards').insert({ id, template, bg, to_name, from_name, message, colors, tz, photo_path });
   if (ins.error) {
     console.error('card insert failed', ins.error);
-    await sb.storage.from(BUCKET).remove([photo_path]);
+    await sb.storage.from(BUCKET).remove([photo_path, `${id}-og.jpg`]);
     return bad('Your postcard could not be saved. Try again in a moment.', 502);
   }
 

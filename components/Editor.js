@@ -4,10 +4,8 @@ import Backdrop from './Backdrop';
 import CardView from './CardView';
 import Receive from './Receive';
 import { TEMPLATES, MAX_MESSAGE } from '@/lib/card';
-import { sampleSunset, extractColors } from '@/lib/photo';
+import { sampleSunset, extractColors, makePreviewBlob } from '@/lib/photo';
 
-const EXAMPLE_MSG =
-  'Saw this sunset on my walk home and it looked exactly like that evening at the beach with you. Wish you were here to see it. Miss you heaps!';
 const STEPS = ['Photo', 'Design', 'Write', 'Send'];
 const NEXT_LABEL = ['Use this photo', 'Write the back', 'Ready to send'];
 const DRAFT_KEY = 'postmark-draft';
@@ -21,9 +19,9 @@ export default function Editor() {
   const [flipped, setFlipped] = useState(false);
   const [template, setTemplate] = useState('classic');
   const [bg, setBg] = useState('blur');
-  const [to, setTo] = useState('Maya');
-  const [from, setFrom] = useState('Priya');
-  const [message, setMessage] = useState(EXAMPLE_MSG);
+  const [to, setTo] = useState('');
+  const [from, setFrom] = useState('');
+  const [message, setMessage] = useState('');
   const [photo, setPhoto] = useState({ url: '', blob: null, isSample: true });
   const [colors, setColors] = useState(['#2a2340', '#c4607a', '#f29a6b', '#5b4a8a']);
   const [preview, setPreview] = useState(false);
@@ -58,16 +56,12 @@ export default function Editor() {
       if (saved) {
         if (TEMPLATES.some((t) => t.id === saved.template)) setTemplate(saved.template);
         if (saved.bg === 'wash' || saved.bg === 'blur') setBg(saved.bg);
-        if (typeof saved.to === 'string') setTo(saved.to);
-        if (typeof saved.from === 'string') setFrom(saved.from);
-        if (typeof saved.message === 'string') setMessage(saved.message);
+        // Remember the sender's name; the recipient and note start fresh each time.
+        if (typeof saved.from === 'string' && saved.from !== 'Priya') setFrom(saved.from);
       }
     } catch (e) {}
     const replyTo = new URLSearchParams(window.location.search).get('to');
-    if (replyTo) {
-      setTo(replyTo.slice(0, 24));
-      setMessage('');
-    }
+    if (replyTo) setTo(replyTo.slice(0, 24));
     setCanShare(typeof navigator !== 'undefined' && !!navigator.share);
     applyPhotoCanvas(sampleSunset(), true);
     loaded.current = true;
@@ -75,8 +69,8 @@ export default function Editor() {
 
   useEffect(() => {
     if (!loaded.current) return;
-    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ template, bg, to, from, message })); } catch (e) {}
-  }, [template, bg, to, from, message]);
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ template, bg, from })); } catch (e) {}
+  }, [template, bg, from]);
 
   // any change after posting means the link no longer matches the card
   useEffect(() => { setPosted(null); setError(''); }, [template, bg, to, from, message, photo.url]);
@@ -121,12 +115,15 @@ export default function Editor() {
     try {
       const fd = new FormData();
       fd.append('photo', photo.blob, 'photo.jpg');
+      try {
+        const preview = await makePreviewBlob(photo.url, colors);
+        if (preview) fd.append('preview', preview, 'preview.jpg');
+      } catch (e) { /* the card still posts without a link preview */ }
       fd.append('data', JSON.stringify({ template, bg, to, from, message, colors, tz: card.tz }));
       const res = await fetch('/api/cards', { method: 'POST', body: fd });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || 'Something went wrong while posting. Try again.');
       setPosted({ url: `${window.location.origin}/p/${json.id}` });
-      try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
     } catch (e) {
       setError(e.message || 'Something went wrong while posting. Try again.');
     } finally {
@@ -147,6 +144,7 @@ export default function Editor() {
   function startOver() {
     setPosted(null);
     setMessage('');
+    setTo('');
     setStep(0);
     applyPhotoCanvas(sampleSunset(), true);
   }
@@ -237,14 +235,14 @@ export default function Editor() {
             <div className="panel">
               <h2>Write on the back</h2>
               <div className="field-row">
-                <div className="field"><label className="label" htmlFor="toInput">To</label><input id="toInput" maxLength={24} autoComplete="off" value={to} onChange={(e) => setTo(e.target.value)} /></div>
-                <div className="field"><label className="label" htmlFor="fromInput">From</label><input id="fromInput" maxLength={24} autoComplete="off" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
+                <div className="field"><label className="label" htmlFor="toInput">To</label><input id="toInput" maxLength={24} autoComplete="off" placeholder="Their name" value={to} onChange={(e) => setTo(e.target.value)} /></div>
+                <div className="field"><label className="label" htmlFor="fromInput">From</label><input id="fromInput" maxLength={24} autoComplete="off" placeholder="Your name" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
               </div>
               <div className="field">
                 <label className="label" htmlFor="msgInput">Your note</label>
-                <textarea id="msgInput" maxLength={MAX_MESSAGE} value={message} placeholder="What made you think of them?" onChange={(e) => setMessage(e.target.value)} />
+                <textarea id="msgInput" maxLength={MAX_MESSAGE} value={message} placeholder="Saw this and thought of you…" onChange={(e) => setMessage(e.target.value)} />
                 <div className="hint-row">
-                  <span>{message === EXAMPLE_MSG ? 'Example note. Replace it with yours.' : ''}</span>
+                  <span>{message ? '' : 'What made you think of them?'}</span>
                   <span>{message.length}/{MAX_MESSAGE}</span>
                 </div>
               </div>
