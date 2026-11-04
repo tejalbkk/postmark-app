@@ -6,7 +6,7 @@ import { mount } from '@/lib/card';
 // flipping only toggles a class so the 3D turn animates.
 export default function CardView({ card, flipped = false, frontOnly = false, id, onClick, className = '' }) {
   const ref = useRef(null);
-  const key = JSON.stringify([card.template, card.photoURL, card.to, card.from, card.message, card.sentAt, card.tz, frontOnly]);
+  const key = JSON.stringify([card.template, card.photoURL, card.ratio, card.to, card.from, card.message, card.sentAt, card.tz, frontOnly]);
 
   useEffect(() => {
     if (!ref.current) return;

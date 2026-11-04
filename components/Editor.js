@@ -22,7 +22,7 @@ export default function Editor() {
   const [to, setTo] = useState('');
   const [from, setFrom] = useState('');
   const [message, setMessage] = useState('');
-  const [photo, setPhoto] = useState({ url: '', blob: null, isSample: true });
+  const [photo, setPhoto] = useState({ url: '', blob: null, isSample: true, ratio: 0.75 });
   const [colors, setColors] = useState(['#2a2340', '#c4607a', '#f29a6b', '#5b4a8a']);
   const [preview, setPreview] = useState(false);
   const [posting, setPosting] = useState(false);
@@ -45,7 +45,7 @@ export default function Editor() {
     const blob = await canvasToBlob(canvas);
     setPhoto((prev) => {
       if (prev.url) URL.revokeObjectURL(prev.url);
-      return { url: URL.createObjectURL(blob), blob, isSample };
+      return { url: URL.createObjectURL(blob), blob, isSample, ratio: canvas.width / canvas.height };
     });
   }, []);
 
@@ -78,9 +78,9 @@ export default function Editor() {
   useEffect(() => { setFlipped(step === 2); }, [step]);
 
   const card = useMemo(() => ({
-    template, bg, to, from, message, colors, photoURL: photo.url, sentAt,
+    template, bg, to, from, message, colors, photoURL: photo.url, ratio: photo.ratio, sentAt,
     tz: typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : undefined,
-  }), [template, bg, to, from, message, colors, photo.url, sentAt]);
+  }), [template, bg, to, from, message, colors, photo.url, photo.ratio, sentAt]);
 
   function loadFile(file) {
     if (!file) return;
@@ -116,10 +116,10 @@ export default function Editor() {
       const fd = new FormData();
       fd.append('photo', photo.blob, 'photo.jpg');
       try {
-        const preview = await makePreviewBlob(photo.url, colors);
+        const preview = await makePreviewBlob(photo.url, colors, photo.ratio);
         if (preview) fd.append('preview', preview, 'preview.jpg');
       } catch (e) { /* the card still posts without a link preview */ }
-      fd.append('data', JSON.stringify({ template, bg, to, from, message, colors, tz: card.tz }));
+      fd.append('data', JSON.stringify({ template, bg, to, from, message, colors, ratio: photo.ratio, tz: card.tz }));
       const res = await fetch('/api/cards', { method: 'POST', body: fd });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || 'Something went wrong while posting. Try again.');

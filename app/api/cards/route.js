@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { customAlphabet } from 'nanoid';
 import { supabaseAdmin, BUCKET } from '@/lib/supabase-server';
-import { TEMPLATE_IDS, MAX_MESSAGE } from '@/lib/card';
+import { TEMPLATE_IDS, MAX_MESSAGE, clampRatio } from '@/lib/card';
 
 export const runtime = 'nodejs';
 
@@ -44,6 +44,7 @@ export async function POST(request) {
   const colors = Array.isArray(data.colors) && data.colors.length === 4 && data.colors.every((c) => HEX.test(c))
     ? data.colors
     : ['#2a2340', '#c4607a', '#f29a6b', '#5b4a8a'];
+  const ratio = Math.round(clampRatio(data.ratio) * 10000) / 10000;
   let tz = clean(data.tz, 64) || null;
   if (tz) {
     try { new Intl.DateTimeFormat('en', { timeZone: tz }); } catch { tz = null; }
@@ -82,7 +83,14 @@ export async function POST(request) {
     if (pv.error) console.error('preview upload failed', pv.error);
   }
 
-  const ins = await sb.from('cards').insert({ id, template, bg, to_name, from_name, message, colors, tz, photo_path });
+  const row = { id, template, bg, to_name, from_name, message, colors, tz, photo_path, ratio };
+  let ins = await sb.from('cards').insert(row);
+  if (ins.error && /ratio/i.test(ins.error.message || '')) {
+    // The ratio column hasn't been added in Supabase yet: save without it (card shows as 3:4).
+    console.warn('cards.ratio column missing; run the ALTER TABLE in supabase/schema.sql');
+    const { ratio: _r, ...rest } = row;
+    ins = await sb.from('cards').insert(rest);
+  }
   if (ins.error) {
     console.error('card insert failed', ins.error);
     await sb.storage.from(BUCKET).remove([photo_path, `${id}-og.jpg`]);

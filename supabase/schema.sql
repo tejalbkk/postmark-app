@@ -11,8 +11,12 @@ create table if not exists public.cards (
   colors      jsonb not null,
   tz          text,
   photo_path  text not null,
+  ratio       real,
   created_at  timestamptz not null default now()
 );
+
+-- Already created the table before portrait cards? This adds the photo-shape column (safe to re-run).
+alter table public.cards add column if not exists ratio real;
 
 -- Row Level Security on, with no policies: the public anon key can't read or write cards.
 alter table public.cards enable row level security;
